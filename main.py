@@ -1,0 +1,1 @@
+print("Gold Telegram Bot is Starting...")
