@@ -13,68 +13,79 @@ def calculate_safety_sl(action, entry_price, risk_dollars, lot):
         return round(entry_price + (risk_dollars / (lot * 100)), 2)
 
 # Removed 'lot=0.01' from the parentheses because we will fetch it inside
-def place_gold_trade(action, entry, sl, tp):
+import MetaTrader5 as mt5
+import config
+
+def place_gold_trade(action, entry, sl, tp=None):
     if not mt5.initialize():
-        print("❌ MT5 Initialization failed")
         return
 
-    # --- NEW: FETCH SETTINGS FROM GUI ---
-    current_lot = config.settings["lot_size"]
-    current_risk_dollars = config.settings["risk_dollars"]
+    # Fetch settings
+    lot = config.settings["lot_size"]
+    risk_usd = config.settings["risk_dollars"]
+    target_usd = config.settings["target_dollars"]
+    pos_count = config.settings["position_count"] # New
 
     symbol = "XAUUSDm"
     mt5.symbol_select(symbol, True)
     tick = mt5.symbol_info_tick(symbol)
-    
-    if tick is None:
-        print(f"❌ Could not get price for {symbol}")
-        return
-
     price = tick.ask if action == "BUY" else tick.bid
+
+    # Calculate SL and TP once (so all positions have the same levels)
+    points_sl = risk_usd / (lot * 100)
+    points_tp = target_usd / (lot * 100)
     
-    # --- UPDATED SAFETY SL ---
-    if sl is None or str(sl).strip() == "":
-        # We now use 'current_risk_dollars' and 'current_lot' from GUI
-        final_sl = calculate_safety_sl(action, price, current_risk_dollars, current_lot)
-        print(f"⚠️ No SL in signal. GUI Safety SL: {final_sl} (Risk: ${current_risk_dollars})")
-    else:
-        final_sl = round(float(sl), 2)
+    final_sl = round(price - points_sl if action == "BUY" else price + points_sl, 2)
+    final_tp = round(price + points_tp if action == "BUY" else price - points_tp, 2)
 
-    # --- DEFAULT TP (1:2 Ratio) ---
-    if tp is None or str(tp).strip() == "":
-        dist = abs(price - final_sl)
-        final_tp = round(price + (dist * 2) if action == "BUY" else price - (dist * 2), 2)
-        print(f"⚠️ No TP in signal. Calculated TP: {final_tp}")
-    else:
-        final_tp = round(float(tp), 2)
+    # --- THE LOOP: Open multiple positions ---
+    for i in range(pos_count):
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": float(lot),
+            "type": mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL,
+            "price": float(price),
+            "sl": float(final_sl),
+            "tp": float(final_tp),
+            "magic": 123456, # This is why Close/BE works for all!
+            "comment": f"Pos {i+1}/{pos_count}",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
 
-    # Build Request
+        result = mt5.order_send(request)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(f"🚀 Position {i+1} opened! Ticket: {result.ticket}")
+        else:
+            print(f"❌ Position {i+1} failed: {result.comment}")
+    # 3. TAKE PROFIT LOGIC: Always use GUI Fixed Profit
+    # We ignore the 'tp' variable from the signal entirely
+    tp_points = target_usd / (lot * 100)
+    final_tp = round(price + tp_points if action == "BUY" else price - tp_points, 2)
+    print(f"🎯 Setting Fixed TP for ${target_usd} profit: {final_tp}")
+
+    # 4. SEND TO MT5
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
-        "volume": float(current_lot), # Uses the value from GUI dropdown
+        "volume": float(lot),
         "type": mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL,
         "price": float(price),
         "sl": float(final_sl),
         "tp": float(final_tp),
         "magic": 123456,
-        "comment": "Gold Bot V2",
-        "type_time": mt5.ORDER_TIME_GTC,
+        "comment": "GoldBot Polished",
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
 
-    print(f"📡 Sending Order: {action} {symbol} | Lot: {current_lot} | SL: {final_sl}")
-    
     result = mt5.order_send(request)
-    
-    if result is None:
-        print("❌ MT5 Error: No response from server")
-    elif result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"❌ Trade Failed! Error {result.retcode}: {result.comment}")
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print(f"❌ Trade Failed: {result.comment}")
     else:
-        print(f"✅ SUCCESS: {action} opened at {result.price}")
+        print(f"🚀 {action} Opened! Ticket: {result.ticket}")
 
-# move_to_break_even and close_all_gold_trades remain exactly as you have them!
+# (Keep your move_to_break_even and close_all_gold_trades functions as they are)
+
 def move_to_break_even(symbol="XAUUSDm"):
     if not mt5.initialize():
         return

@@ -23,7 +23,7 @@ target_id = 1003315419486
 async def my_event_handler(event):
     global target_id
     
-    # ID Normalization
+    # 1. ID Normalization
     incoming = str(event.chat_id).replace("-100", "").replace("-", "")
     target = str(target_id).replace("-100", "").replace("-", "")
 
@@ -33,47 +33,43 @@ async def my_event_handler(event):
     msg = event.raw_text.upper()
     print(f"✅ Verified Signal Received: {msg}")
 
-    # --- CLOSE SIGNAL LOGIC ---
-    # We check if any of these trigger words are in the message
+    # 2. CLOSE SIGNAL LOGIC
     close_triggers = ["CLOSE", "CLOSS", "EXIT", "CLOSE ALL"]
-    
     if any(trigger in msg for trigger in close_triggers):
         print("🛑 Close command detected!")
         from trading import close_all_gold_trades
         close_all_gold_trades("XAUUSDm")
-        return # Stop processing further so it doesn't try to open a new trade
-    # --- BREAK EVEN SIGNAL LOGIC ---
-    be_triggers = ["MOVE SL TO BE", "SL TO ENTRY", "SL TO BE", "BREAKEVEN", "BREAK EVEN"]
-    
+        return 
+
+    # 3. BREAK EVEN SIGNAL LOGIC
+    be_triggers = ["MOVE SL TO BE", "SL TO ENTRY", "SL TO BE", "BREAKEVEN", "BREAK EVEN", "SL BE"]
     if any(trigger in msg for trigger in be_triggers):
         print("⚡ Break Even command detected!")
         from trading import move_to_break_even
         move_to_break_even("XAUUSDm")
-        return  # Stop here
-    
+        return 
 
+    # 4. NEW TRADE LOGIC (Simplified for GUI Fixed TP)
     action = "BUY" if "BUY" in msg else "SELL" if "SELL" in msg else None
     
     if action and ("GOLD" in msg or "XAUUSD" in msg):
-        # Extract all numbers
+        # Extract numbers - we only need to look for a potential SL
         numbers = re.findall(r"[-+]?\d*\.\d+|\d+", msg)
         
-        # Default them to None so trading.py knows to calculate them
         sl = None
-        tp = None
+        
+        # LOGIC: Grab the number that follows 'SL' if it exists. 
+        # If no 'SL' word, we take the 1st number as SL (for 'BUY NOW 2500' type signals)
+        if "SL" in msg and len(numbers) >= 1:
+            # Usually SL is the first number after the word 'SL'
+            sl = numbers[0] 
+        elif len(numbers) >= 1:
+            sl = numbers[0]
 
-        if "NOW" in msg or len(numbers) == 0:
-            # Format: "SELL GOLD NOW SL 2150" -> numbers[0] is SL
-            if len(numbers) >= 1: sl = numbers[0]
-            if len(numbers) >= 2: tp = numbers[1]
-        else:
-            # Format: "BUY GOLD 2150 SL 2140 TP 2170"
-            if len(numbers) >= 2: sl = numbers[1]
-            if len(numbers) >= 3: tp = numbers[2]
-
-        # Call the trade function
-        place_gold_trade(action, 0, sl, tp)
-
+        # Call the trade function. 
+        # Entry=0 (we use market price) and TP=None (trading.py uses GUI settings)
+        print(f"📡 Sending {action} Signal to Executor...")
+        place_gold_trade(action, 0, sl, None)
 async def main():
     global target_id
     print("--- Connecting to Telegram ---")
