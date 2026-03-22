@@ -34,7 +34,7 @@ class GoldBotGUI(ctk.CTk):
         # Position Count Entry
         ctk.CTkLabel(self, text="Number of Positions:").pack()
         self.count_entry = ctk.CTkEntry(self, placeholder_text="1")
-        self.count_entry.insert(0, "1")
+        self.count_entry.insert(0, str(config.settings["position_count"]))
         self.count_entry.pack(pady=5)
         
         # Save Settings Button
@@ -61,13 +61,13 @@ class GoldBotGUI(ctk.CTk):
         try:
             risk = float(self.risk_entry.get())
             target = float(self.tp_entry.get())
-            count = int(self.count_entry.get()) # Get the number of positions
+            count = int(self.count_entry.get())
             
             config.settings["risk_dollars"] = risk
             config.settings["target_dollars"] = target
             config.settings["position_count"] = count
             
-            self.write_log(f"✅ Saved: Risk ${risk} | Target ${target} | Positions: {count}")
+            self.write_log(f"✅ Saved: Risk ${risk} | TP1 ${target} | Positions: {count}")
         except ValueError:
             self.write_log("❌ Error: Use numbers only!")
     def run_bot_thread(self):

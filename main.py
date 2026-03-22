@@ -12,7 +12,7 @@ load_dotenv()
 API_ID = os.getenv('TELEGRAM_API_ID')
 API_HASH = os.getenv('TELEGRAM_API_HASH')
 # PASTE YOUR LINK HERE (e.g., 'https://t.me/YourSignalChannel' or '+AbC123...')
-CHANNEL_LINK = "https://t.me/k100million" 
+CHANNEL_LINK = "https://t.me/+0UEudMz-wcczOWQ1" 
 
 client = TelegramClient('gold_session', API_ID, API_HASH)
 
@@ -49,25 +49,41 @@ async def my_event_handler(event):
         move_to_break_even("XAUUSDm")
         return 
 
-    # 4. NEW TRADE LOGIC (Simplified for GUI Fixed TP)
+   # 4. NEW TRADE LOGIC (Final Polish for "NOW" vs "SL")
+    
+    # --- A. THE GATEKEEPER (Ignore "LOOKING", "WATCHING", etc.) ---
+    ignore_triggers = ["LOOKING", "WATCHING", "WAITING", "POTENTIAL", "PREPARE"]
+    if any(word in msg for word in ignore_triggers):
+        print(f"👀 Info: Ignoring opinion message: {msg}")
+        return
+
+    # --- B. DETECT ACTION ---
     action = "BUY" if "BUY" in msg else "SELL" if "SELL" in msg else None
     
     if action and ("GOLD" in msg or "XAUUSD" in msg):
-        # Extract numbers - we only need to look for a potential SL
-        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", msg)
-        
         sl = None
         
-        # LOGIC: Grab the number that follows 'SL' if it exists. 
-        # If no 'SL' word, we take the 1st number as SL (for 'BUY NOW 2500' type signals)
-        if "SL" in msg and len(numbers) >= 1:
-            # Usually SL is the first number after the word 'SL'
-            sl = numbers[0] 
-        elif len(numbers) >= 1:
-            sl = numbers[0]
+        # --- C. SMART SL EXTRACTION (Only if 'SL' keyword exists) ---
+        if "SL" in msg:
+            # We split at "SL" and grab the number immediately following it
+            try:
+                parts = msg.split("SL")
+                # Look for numbers only in the part AFTER the word "SL"
+                sl_numbers = re.findall(r"[-+]?\d*\.\d+|\d+", parts[1])
+                if sl_numbers:
+                    sl = sl_numbers[0]
+                    print(f"🛡️ Valid SL found after keyword: {sl}")
+            except Exception as e:
+                print(f"⚠️ Error parsing SL: {e}")
+        
+        # --- D. THE "NOW" RULE ---
+        # If no "SL" keyword was found, we send 'None' to trading.py
+        # This prevents the bot from accidentally using the Entry Price as an SL
+        if sl is None:
+            print(f"⚠️ No explicit SL found. Using GUI Default Risk.")
 
-        # Call the trade function. 
-        # Entry=0 (we use market price) and TP=None (trading.py uses GUI settings)
+        # --- E. EXECUTION ---
+        # Entry=0 (Market Price), TP=None (GUI Ladder settings)
         print(f"📡 Sending {action} Signal to Executor...")
         place_gold_trade(action, 0, sl, None)
 async def main():

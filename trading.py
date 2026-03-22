@@ -5,41 +5,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def calculate_safety_sl(action, entry_price, risk_dollars, lot):
-    # This remains the same, but now uses values passed from config
-    if action == "BUY":
-        return round(entry_price - (risk_dollars / (lot * 100)), 2)
-    else:
-        return round(entry_price + (risk_dollars / (lot * 100)), 2)
-
 # Removed 'lot=0.01' from the parentheses because we will fetch it inside
 import MetaTrader5 as mt5
 import config
 
 def place_gold_trade(action, entry, sl, tp=None):
     if not mt5.initialize():
+        print("❌ MT5 Init Failed")
         return
 
-    # Fetch settings
+    # 1. Fetch live GUI settings
     lot = config.settings["lot_size"]
     risk_usd = config.settings["risk_dollars"]
-    target_usd = config.settings["target_dollars"]
-    pos_count = config.settings["position_count"] # New
+    base_target_usd = config.settings["target_dollars"]
+    pos_count = max(1, config.settings.get("position_count", 1)) # Safety: min 1
 
     symbol = "XAUUSDm"
     mt5.symbol_select(symbol, True)
     tick = mt5.symbol_info_tick(symbol)
     price = tick.ask if action == "BUY" else tick.bid
 
-    # Calculate SL and TP once (so all positions have the same levels)
-    points_sl = risk_usd / (lot * 100)
-    points_tp = target_usd / (lot * 100)
-    
-    final_sl = round(price - points_sl if action == "BUY" else price + points_sl, 2)
-    final_tp = round(price + points_tp if action == "BUY" else price - points_tp, 2)
-
-    # --- THE LOOP: Open multiple positions ---
+    # Inside trading.py -> place_gold_trade function:
+    if sl is None or str(sl).strip() == "":
+        # Calculate Safety SL based on GUI USD Risk
+        points = risk_usd / (lot * 100)
+        final_sl = round(price - points if action == "BUY" else price + points, 2)
+    else:
+        final_sl = round(float(sl), 2)
+    # 3. OPEN POSITIONS IN A LOOP WITH INCREASING TP
     for i in range(pos_count):
+        # Multiplier: 1.0 for first, 1.5 for second, 2.25 for third, etc.
+        # This makes each TP 50% further than the previous one
+        multiplier = 1.5 ** i 
+        current_tp_usd = base_target_usd * multiplier
+        
+        tp_points = current_tp_usd / (lot * 100)
+        final_tp = round(price + tp_points if action == "BUY" else price - tp_points, 2)
+
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
@@ -48,41 +50,17 @@ def place_gold_trade(action, entry, sl, tp=None):
             "price": float(price),
             "sl": float(final_sl),
             "tp": float(final_tp),
-            "magic": 123456, # This is why Close/BE works for all!
-            "comment": f"Pos {i+1}/{pos_count}",
+            "magic": 123456,
+            "comment": f"Ladder {i+1}",
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
 
         result = mt5.order_send(request)
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(f"🚀 Position {i+1} opened! Ticket: {result.ticket}")
+        
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"❌ Position {i+1} Failed: {result.comment}")
         else:
-            print(f"❌ Position {i+1} failed: {result.comment}")
-    # 3. TAKE PROFIT LOGIC: Always use GUI Fixed Profit
-    # We ignore the 'tp' variable from the signal entirely
-    tp_points = target_usd / (lot * 100)
-    final_tp = round(price + tp_points if action == "BUY" else price - tp_points, 2)
-    print(f"🎯 Setting Fixed TP for ${target_usd} profit: {final_tp}")
-
-    # 4. SEND TO MT5
-    request = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": symbol,
-        "volume": float(lot),
-        "type": mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL,
-        "price": float(price),
-        "sl": float(final_sl),
-        "tp": float(final_tp),
-        "magic": 123456,
-        "comment": "GoldBot Polished",
-        "type_filling": mt5.ORDER_FILLING_IOC,
-    }
-
-    result = mt5.order_send(request)
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"❌ Trade Failed: {result.comment}")
-    else:
-        print(f"🚀 {action} Opened! Ticket: {result.ticket}")
+            print(f"🚀 Pos {i+1}/{pos_count} Open! TP Target: ${round(current_tp_usd, 2)} (@ {final_tp})")
 
 # (Keep your move_to_break_even and close_all_gold_trades functions as they are)
 
