@@ -25,9 +25,9 @@ def place_gold_trade(action, entry, sl, tp=None):
     tick = mt5.symbol_info_tick(symbol)
     price = tick.ask if action == "BUY" else tick.bid
 
-    # Inside trading.py -> place_gold_trade function:
-    if sl is None or str(sl).strip() == "":
-        # Calculate Safety SL based on GUI USD Risk
+    # Inside trading.py -> place_gold_trade:
+    if sl is None:
+        # This calculates the SL based on your GUI 'Risk Dollars'
         points = risk_usd / (lot * 100)
         final_sl = round(price - points if action == "BUY" else price + points, 2)
     else:

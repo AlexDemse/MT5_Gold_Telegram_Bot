@@ -12,7 +12,7 @@ load_dotenv()
 API_ID = os.getenv('TELEGRAM_API_ID')
 API_HASH = os.getenv('TELEGRAM_API_HASH')
 # PASTE YOUR LINK HERE (e.g., 'https://t.me/YourSignalChannel' or '+AbC123...')
-CHANNEL_LINK = "https://t.me/+0UEudMz-wcczOWQ1" 
+CHANNEL_LINK = "https://t.me/k100million" 
 
 client = TelegramClient('gold_session', API_ID, API_HASH)
 
@@ -61,30 +61,14 @@ async def my_event_handler(event):
     action = "BUY" if "BUY" in msg else "SELL" if "SELL" in msg else None
     
     if action and ("GOLD" in msg or "XAUUSD" in msg):
-        sl = None
+        # --- C. FIXED RISK STRATEGY ---
+        # We explicitly set sl to None. 
+        # This forces trading.py to use your GUI Risk ($15) every single time.
+        sl = None 
         
-        # --- C. SMART SL EXTRACTION (Only if 'SL' keyword exists) ---
-        if "SL" in msg:
-            # We split at "SL" and grab the number immediately following it
-            try:
-                parts = msg.split("SL")
-                # Look for numbers only in the part AFTER the word "SL"
-                sl_numbers = re.findall(r"[-+]?\d*\.\d+|\d+", parts[1])
-                if sl_numbers:
-                    sl = sl_numbers[0]
-                    print(f"🛡️ Valid SL found after keyword: {sl}")
-            except Exception as e:
-                print(f"⚠️ Error parsing SL: {e}")
-        
-        # --- D. THE "NOW" RULE ---
-        # If no "SL" keyword was found, we send 'None' to trading.py
-        # This prevents the bot from accidentally using the Entry Price as an SL
-        if sl is None:
-            print(f"⚠️ No explicit SL found. Using GUI Default Risk.")
+        print(f"📡 {action} Signal detected. Ignoring Telegram SL, using GUI Fixed Risk.")
 
-        # --- E. EXECUTION ---
-        # Entry=0 (Market Price), TP=None (GUI Ladder settings)
-        print(f"📡 Sending {action} Signal to Executor...")
+        # --- D. EXECUTION ---
         place_gold_trade(action, 0, sl, None)
 async def main():
     global target_id
