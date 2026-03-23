@@ -1,4 +1,4 @@
-# MT5_Gold_Telegram_Bot
+# MT5_Gold_Copy_Trader_Bot
 generic telegram bot for mt5 
 how to open 
 run cmd or powershell 
